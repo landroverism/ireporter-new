@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { AlertTriangle, Mail, Lock } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface SignInProps {
   onLogin: (user: any) => void;
@@ -23,27 +24,47 @@ const SignIn = ({ onLogin, is_admin }: SignInProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-
-    const loginPayload = {
-      email,
-      password,
-      is_admin,
-    };
+    setErrors([]);
 
     try {
-      const response = await fetch("/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(loginPayload),
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
 
-      if (response.ok) {
-        const user = await response.json();
-        localStorage.setItem("user", JSON.stringify(user));
-        localStorage.setItem("token", user.token);
-        
+      if (error) {
+        setErrors([error.message]);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: error.message,
+        });
+        return;
+      }
+
+      if (data.user) {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profileError) {
+          console.error('Error fetching profile:', profileError);
+        }
+
+        const user = {
+          ...data.user,
+          ...profileData,
+        };
+
+        // Check if user is admin when logging into admin route
+        if (is_admin && !profileData?.is_admin) {
+          setErrors(['You do not have admin privileges']);
+          await supabase.auth.signOut();
+          return;
+        }
+
         toast({
           title: "Welcome back!",
           description: "You've successfully logged in.",
@@ -51,14 +72,6 @@ const SignIn = ({ onLogin, is_admin }: SignInProps) => {
 
         onLogin(user);
         navigate(user.is_admin ? "/dashboard" : "/user-landing");
-      } else {
-        const err = await response.json();
-        setErrors([err.errors]);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: err.errors,
-        });
       }
     } catch (error) {
       console.error("Login error:", error);

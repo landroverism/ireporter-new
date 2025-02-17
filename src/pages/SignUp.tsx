@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { AlertTriangle, Mail, Lock, User, Phone } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface SignUpProps {
   onLogin: (user: any) => void;
@@ -17,7 +18,6 @@ const SignUp = ({ onLogin }: SignUpProps) => {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
-  const [isAdmin] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
@@ -26,39 +26,65 @@ const SignUp = ({ onLogin }: SignUpProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setErrors([]);
+
+    // Validate passwords match
+    if (password !== passwordConfirmation) {
+      setErrors(["Passwords do not match"]);
+      setIsLoading(false);
+      return;
+    }
 
     try {
-      const response = await fetch("/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          username: name,
-          email,
-          phone_number: phoneNumber,
-          password,
-          password_confirmation: passwordConfirmation,
-          is_admin: isAdmin,
-        }),
+      // Create the user account
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
       });
 
-      if (response.ok) {
-        const user = await response.json();
-        onLogin(user);
+      if (authError) {
+        setErrors([authError.message]);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: authError.message,
+        });
+        return;
+      }
+
+      if (authData.user) {
+        // Create the user profile
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert([
+            {
+              id: authData.user.id,
+              username: name,
+              phone_number: phoneNumber,
+              is_admin: false,
+            }
+          ]);
+
+        if (profileError) {
+          console.error("Profile creation error:", profileError);
+          setErrors([profileError.message]);
+          return;
+        }
+
+        const user = {
+          ...authData.user,
+          username: name,
+          phone_number: phoneNumber,
+          is_admin: false,
+        };
+
         toast({
           title: "Account created!",
           description: "Welcome to iReporter. You can now start reporting incidents.",
         });
+
+        onLogin(user);
         navigate("/user-landing");
-      } else {
-        const err = await response.json();
-        setErrors(err.errors);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "There was a problem creating your account.",
-        });
       }
     } catch (error) {
       console.error("Registration error:", error);
