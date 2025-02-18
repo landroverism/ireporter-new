@@ -25,6 +25,30 @@ const SignUpForm = ({ onLogin }: SignUpFormProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const createProfile = async (userId: string) => {
+    const { data: session } = await supabase.auth.getSession();
+    
+    if (!session?.session) {
+      throw new Error("No session available");
+    }
+
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .upsert([
+        {
+          id: userId,
+          username: name,
+          phone_number: phoneNumber,
+          is_admin: false,
+        }
+      ], { onConflict: 'id' });
+
+    if (profileError) {
+      console.error("Profile creation error:", profileError);
+      throw profileError;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -37,7 +61,6 @@ const SignUpForm = ({ onLogin }: SignUpFormProps) => {
     }
 
     try {
-      // First sign up the user
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -59,44 +82,39 @@ const SignUpForm = ({ onLogin }: SignUpFormProps) => {
         return;
       }
 
-      if (authData.user) {
-        // Now create the profile using the session
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert([
-            {
-              id: authData.user.id,
-              username: name,
-              phone_number: phoneNumber,
-              is_admin: false,
-            }
-          ], { onConflict: 'id' });
-
-        if (profileError) {
-          console.error("Profile creation error:", profileError);
-          setErrors([profileError.message]);
-          return;
-        }
-
-        const user = {
-          ...authData.user,
-          username: name,
-          phone_number: phoneNumber,
-          is_admin: false,
-        };
-
-        toast({
-          title: "Account created!",
-          description: "Welcome to iReporter. You can now start reporting incidents.",
-        });
-
-        localStorage.setItem('user', JSON.stringify(user));
-        onLogin(user);
-        navigate("/user-landing");
+      if (!authData.user) {
+        throw new Error("No user data returned");
       }
-    } catch (error) {
+
+      // Wait a short moment for the session to be established
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Try to create the profile
+      await createProfile(authData.user.id);
+
+      const user = {
+        ...authData.user,
+        username: name,
+        phone_number: phoneNumber,
+        is_admin: false,
+      };
+
+      toast({
+        title: "Account created!",
+        description: "Welcome to iReporter. You can now start reporting incidents.",
+      });
+
+      localStorage.setItem('user', JSON.stringify(user));
+      onLogin(user);
+      navigate("/user-landing");
+    } catch (error: any) {
       console.error("Registration error:", error);
-      setErrors(["An unexpected error occurred"]);
+      setErrors([error.message || "An unexpected error occurred"]);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to create account",
+      });
     } finally {
       setIsLoading(false);
     }
