@@ -25,30 +25,6 @@ const SignUpForm = ({ onLogin }: SignUpFormProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const createProfile = async (userId: string) => {
-    const { data: session } = await supabase.auth.getSession();
-    
-    if (!session?.session) {
-      throw new Error("No session available");
-    }
-
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .upsert([
-        {
-          id: userId,
-          username: name,
-          phone_number: phoneNumber,
-          is_admin: false,
-        }
-      ], { onConflict: 'id' });
-
-    if (profileError) {
-      console.error("Profile creation error:", profileError);
-      throw profileError;
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -86,11 +62,22 @@ const SignUpForm = ({ onLogin }: SignUpFormProps) => {
         throw new Error("No user data returned");
       }
 
-      // Wait a short moment for the session to be established
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Create profile directly after signup
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert([
+          {
+            id: authData.user.id,
+            username: name,
+            phone_number: phoneNumber,
+            is_admin: false,
+          }
+        ]);
 
-      // Try to create the profile
-      await createProfile(authData.user.id);
+      if (profileError) {
+        console.error("Profile creation error:", profileError);
+        throw profileError;
+      }
 
       const user = {
         ...authData.user,
