@@ -25,6 +25,39 @@ const SignUpForm = ({ onLogin }: SignUpFormProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const createProfile = async (userId: string) => {
+    try {
+      // Get the current session to ensure we're authenticated
+      const { data: session } = await supabase.auth.getSession();
+      console.log("Current session:", session); // Debug log
+
+      if (!session?.session) {
+        throw new Error("No session available");
+      }
+
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert([
+          {
+            id: userId,
+            username: name,
+            phone_number: phoneNumber,
+            is_admin: false,
+          }
+        ]);
+
+      if (profileError) {
+        console.error("Profile creation error:", profileError);
+        throw profileError;
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Profile creation error:", error);
+      throw error;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -62,21 +95,27 @@ const SignUpForm = ({ onLogin }: SignUpFormProps) => {
         throw new Error("No user data returned");
       }
 
-      // Create profile directly after signup
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert([
-          {
-            id: authData.user.id,
-            username: name,
-            phone_number: phoneNumber,
-            is_admin: false,
-          }
-        ]);
+      // Wait a short moment for the session to be established
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      if (profileError) {
-        console.error("Profile creation error:", profileError);
-        throw profileError;
+      // Try to create the profile with retries
+      let profileCreated = false;
+      let retryCount = 0;
+      const maxRetries = 3;
+
+      while (!profileCreated && retryCount < maxRetries) {
+        try {
+          await createProfile(authData.user.id);
+          profileCreated = true;
+        } catch (error: any) {
+          console.log(`Profile creation attempt ${retryCount + 1} failed:`, error);
+          retryCount++;
+          if (retryCount < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait before retrying
+          } else {
+            throw error;
+          }
+        }
       }
 
       const user = {
