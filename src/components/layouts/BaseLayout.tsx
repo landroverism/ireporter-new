@@ -5,7 +5,7 @@ import Footer from "@/components/Footer";
 
 interface BaseLayoutProps {
   children: ReactNode;
-  user?: any; // Add this line to fix the typing error
+  user?: any;
 }
 
 const BaseLayout = ({ children, user }: BaseLayoutProps) => {
