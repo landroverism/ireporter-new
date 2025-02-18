@@ -37,32 +37,40 @@ const SignUpForm = ({ onLogin }: SignUpFormProps) => {
     }
 
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // First sign up the user
+      const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            username: name,
+            phone_number: phoneNumber,
+          }
+        }
       });
 
-      if (authError) {
-        setErrors([authError.message]);
+      if (signUpError) {
+        setErrors([signUpError.message]);
         toast({
           variant: "destructive",
           title: "Error",
-          description: authError.message,
+          description: signUpError.message,
         });
         return;
       }
 
       if (authData.user) {
+        // Now create the profile using the session
         const { error: profileError } = await supabase
           .from('profiles')
-          .insert([
+          .upsert([
             {
               id: authData.user.id,
               username: name,
               phone_number: phoneNumber,
               is_admin: false,
             }
-          ]);
+          ], { onConflict: 'id' });
 
         if (profileError) {
           console.error("Profile creation error:", profileError);
@@ -82,6 +90,7 @@ const SignUpForm = ({ onLogin }: SignUpFormProps) => {
           description: "Welcome to iReporter. You can now start reporting incidents.",
         });
 
+        localStorage.setItem('user', JSON.stringify(user));
         onLogin(user);
         navigate("/user-landing");
       }
