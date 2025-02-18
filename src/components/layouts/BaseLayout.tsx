@@ -5,14 +5,14 @@ import Footer from "@/components/Footer";
 
 interface BaseLayoutProps {
   children: ReactNode;
-  user?: any;
+  user?: any; // Add this line to fix the typing error
 }
 
 const BaseLayout = ({ children, user }: BaseLayoutProps) => {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar user={user} />
-      <main className="flex-grow container mx-auto px-4 pt-16">
+      <main className="flex-grow">
         {children}
       </main>
       <Footer />
